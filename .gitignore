@@ -11,3 +11,4 @@ coverage.out
 /dist
 .envrc
 .DS_Store
+.talismanrc
