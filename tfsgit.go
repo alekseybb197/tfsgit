@@ -1,0 +1,161 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	_ "fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
+	"path"
+	"time"
+
+	confita "github.com/heetch/confita"
+	confitaenv "github.com/heetch/confita/backend/env"
+	confitafile "github.com/heetch/confita/backend/file"
+	confitaflags "github.com/heetch/confita/backend/flags"
+
+	"github.com/tidwall/gjson"
+)
+
+type Config struct {
+	Cred   string `config:"tfscred,short=c,required,description=user name and access token"`
+	Repo   string `config:"tfsrepo,short=r,required,description=repository url"`
+	Branch string `config:"tfsbranch,short=b,required,description=branch name"`
+	Path   string `config:"tfspath,short=p,required,description=git path"`
+	Depth  int    `config:"tfsdepth,short=d,required,description=directory depth"`
+}
+
+// default values
+var cfg = Config{
+	Branch: "master",
+	Depth:  10,
+}
+
+var tfsClient = http.Client{
+	Timeout: time.Second * 2, // Timeout after 2 seconds
+}
+
+// depth level
+var ndepth = 0
+
+func tfsrequest(url string) *http.Response {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	req.Header.Set("User-Agent", "curl/7.79.1")
+	req.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(cfg.Cred)))
+	//return req
+	res, get := tfsClient.Do(req)
+	if get != nil {
+		log.Fatalln(get)
+	}
+	return res
+}
+
+func tfswalk(tfspath string) { // scan tfspath
+
+	url := cfg.Repo + "/items?scopePath=" + tfspath + "/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + cfg.Branch
+
+	res := tfsrequest(url)
+	if res.Body != nil {
+		defer res.Body.Close()
+	}
+
+	body, readErr := ioutil.ReadAll(res.Body)
+	if readErr != nil {
+		log.Fatalln(readErr)
+	}
+
+	// scan json
+	result := gjson.Get(string(body), "value")
+	result.ForEach(func(key, value gjson.Result) bool {
+
+		etype := gjson.Get(value.String(), "gitObjectType")
+		epath := gjson.Get(value.String(), "path")
+		eurl := gjson.Get(value.String(), "url")
+
+		if etype.String() == "tree" {
+			if epath.String() == tfspath { // ignore self
+				return true // continue. if it is '.'
+			} else { // subdir found!
+				_, dirname := path.Split(epath.String())
+
+				if _, err := os.Stat(dirname); errors.Is(err, os.ErrNotExist) {
+					log.Println("make new directory -", dirname)
+					err := os.Mkdir(dirname, os.ModePerm)
+					if err != nil {
+						log.Println(err)
+					}
+				}
+
+				if ndepth < cfg.Depth {
+					cwd, _ := os.Getwd() // save current dir
+					err := os.Chdir(dirname)
+					if err != nil {
+						log.Fatalln(err)
+					} else {
+						ndepth++
+						tfswalk(epath.String())
+						os.Chdir(cwd)
+						ndepth--
+					}
+				}
+
+				return true
+			}
+		}
+
+		if etype.String() == "blob" { // get file
+			_, filepath := path.Split(epath.String())
+			log.Println("download file -", filepath)
+
+			res := tfsrequest(eurl.String())
+			if res.Body != nil {
+				defer res.Body.Close()
+			}
+
+			// Create the file
+			out, createErr := os.Create(filepath)
+			if createErr != nil {
+				log.Fatalln(createErr)
+			}
+			defer out.Close()
+
+			// Write the body to file
+			_, copyErr := io.Copy(out, res.Body)
+			if copyErr != nil {
+				log.Fatalln(copyErr)
+			}
+
+			return true
+		}
+
+		// ignore unknown type
+		log.Println("unknown type", etype.String(), "path", epath.String())
+
+		return true // keep iterating
+	})
+}
+
+func main() {
+
+	// load actual values
+	loader := confita.NewLoader(
+		confitafile.NewOptionalBackend(".tfsgit.yaml"),
+		confitaenv.NewBackend(),
+		confitaflags.NewBackend(),
+	)
+
+	// process config error
+	err := loader.Load(context.Background(), &cfg)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	tfswalk("/" + cfg.Path)
+}
