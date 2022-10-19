@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"time"
+	"regexp"
 
 	confita "github.com/heetch/confita"
 	confitaenv "github.com/heetch/confita/backend/env"
@@ -60,7 +61,6 @@ func tfsrequest(url string) *http.Response {
 }
 
 func tfswalk(tfspath string) { // scan tfspath
-
 	url := cfg.Repo + "/items?scopePath=" + tfspath + "/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + cfg.Branch
 
 	res := tfsrequest(url)
@@ -88,7 +88,7 @@ func tfswalk(tfspath string) { // scan tfspath
 				_, dirname := path.Split(epath.String())
 
 				if _, err := os.Stat(dirname); errors.Is(err, os.ErrNotExist) {
-					if ! cfg.Quiet {
+					if !cfg.Quiet {
                         log.Println("make new directory -", dirname)
 					}
 					err := os.Mkdir(dirname, os.ModePerm)
@@ -116,7 +116,7 @@ func tfswalk(tfspath string) { // scan tfspath
 
 		if etype.String() == "blob" { // get file
 			_, filepath := path.Split(epath.String())
-			if ! cfg.Quiet {
+			if !cfg.Quiet {
 				log.Println("download file -", filepath)
 			}
 
@@ -149,7 +149,6 @@ func tfswalk(tfspath string) { // scan tfspath
 }
 
 func main() {
-
 	// load actual values
 	loader := confita.NewLoader(
 		confitafile.NewOptionalBackend(".tfsgit.yaml"),
@@ -163,5 +162,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	tfswalk("/" + cfg.Path)
+	// supress lead slash if exists
+	re, _ := regexp.Compile(`^/`)
+	tfswalk("/" + re.ReplaceAllString(cfg.Path,""))
 }
