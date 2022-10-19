@@ -24,15 +24,17 @@ import (
 type Config struct {
 	Cred   string `config:"tfscred,short=c,required,description=user name and access token"`
 	Repo   string `config:"tfsrepo,short=r,required,description=repository url"`
-	Branch string `config:"tfsbranch,short=b,required,description=branch name"`
+	Branch string `config:"tfsbranch,short=b,optional,description=branch name"`
 	Path   string `config:"tfspath,short=p,required,description=git path"`
-	Depth  int    `config:"tfsdepth,short=d,required,description=directory depth"`
+	Depth  int    `config:"tfsdepth,short=d,optional,description=directory depth"`
+	Quiet  bool   `config:"tfsquiet,short=q,optional,description=quiet mode"`
 }
 
 // default values
 var cfg = Config{
 	Branch: "master",
 	Depth:  10,
+	Quiet:	false,
 }
 
 var tfsClient = http.Client{
@@ -86,7 +88,9 @@ func tfswalk(tfspath string) { // scan tfspath
 				_, dirname := path.Split(epath.String())
 
 				if _, err := os.Stat(dirname); errors.Is(err, os.ErrNotExist) {
-					log.Println("make new directory -", dirname)
+					if ! cfg.Quiet {
+                        log.Println("make new directory -", dirname)
+					}
 					err := os.Mkdir(dirname, os.ModePerm)
 					if err != nil {
 						log.Println(err)
@@ -112,7 +116,9 @@ func tfswalk(tfspath string) { // scan tfspath
 
 		if etype.String() == "blob" { // get file
 			_, filepath := path.Split(epath.String())
-			log.Println("download file -", filepath)
+			if ! cfg.Quiet {
+				log.Println("download file -", filepath)
+			}
 
 			res := tfsrequest(eurl.String())
 			if res.Body != nil {
