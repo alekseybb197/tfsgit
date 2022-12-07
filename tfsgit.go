@@ -29,6 +29,7 @@ type Config struct {
 	Path   string `config:"tfspath,short=p,required,description=git path"`
 	Depth  int    `config:"tfsdepth,short=d,optional,description=directory depth"`
 	Quiet  bool   `config:"tfsquiet,short=q,optional,description=quiet mode"`
+	Timeout  int  `config:"tfstimeout,short=t,optional,description=timeout secs"`
 }
 
 // default values
@@ -36,10 +37,11 @@ var cfg = Config{
 	Branch: "master",
 	Depth:  10,
 	Quiet:	false,
+	Timeout: 5,
 }
 
 var tfsClient = http.Client{
-	Timeout: time.Second * 2, // Timeout after 2 seconds
+	Timeout: time.Second * time.Duration(cfg.Timeout), // Timeout after N seconds
 }
 
 // depth level
