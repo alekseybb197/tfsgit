@@ -17,27 +17,34 @@ Cli utility get parameters from environment, command flags or configuration file
 
 ```
 ❯ dist/tfsgit -h
-Usage of dist/tfsgit:
+Usage of ./tfsgit-darwin-amd64:
   -b string
-        branch name (short) (default "master")
+    	branch name (short) (default "master")
   -c string
-        user name and access token (short)
+    	user name and access token (short)
   -d int
-        directory depth (short) (default 10)
+    	directory depth (short) (default 10)
   -p string
-        git path (short)
+    	git path (short)
+  -q	quiet mode (short)
   -r string
-        repository url (short)
+    	repository url (short)
+  -t int
+    	timeout secs (short) (default 5)
   -tfsbranch string
-        branch name (default "master")
+    	branch name (default "master")
   -tfscred string
-        user name and access token
+    	user name and access token
   -tfsdepth int
-        directory depth (default 10)
+    	directory depth (default 10)
   -tfspath string
-        git path
+    	git path
+  -tfsquiet
+    	quiet mode
   -tfsrepo string
-        repository url
+    	repository url
+  -tfstimeout int
+    	timeout secs (default 5)
 ```
 
 ## Usage example.
