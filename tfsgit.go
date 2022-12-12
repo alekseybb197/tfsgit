@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	_ "fmt"
 	"io"
 	"io/ioutil"
@@ -11,8 +12,8 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"time"
 	"regexp"
+	"time"
 
 	confita "github.com/heetch/confita"
 	confitaenv "github.com/heetch/confita/backend/env"
@@ -21,6 +22,8 @@ import (
 
 	"github.com/tidwall/gjson"
 )
+
+var version string
 
 type Config struct {
 	Cred   string `config:"tfscred,short=c,required,description=user name and access token"`
@@ -122,7 +125,14 @@ func tfswalk(tfspath string) { // scan tfspath
 				log.Println("download file -", filepath)
 			}
 
-			res := tfsrequest(eurl.String())
+			// need to change schema for download file because lfs
+			pattern_path := regexp.MustCompile(`items//`)
+			url := pattern_path.ReplaceAllString(eurl.String(),"items?path=")
+			pattern_tail := regexp.MustCompile(`\?versionType`)
+			url = pattern_tail.Split(url,-1)[0] + "&versionDescriptor%5BversionOptions%5D=0&versionDescriptor%5BversionType%5D=0&versionDescriptor%5Bversion%5D=" + cfg.Branch
+			url = url + "&resolveLfs=true&api-version=5.0&download=true"
+
+			res := tfsrequest(url)
 			if res.Body != nil {
 				defer res.Body.Close()
 			}
@@ -166,5 +176,13 @@ func main() {
 
 	// supress lead slash if exists
 	re, _ := regexp.Compile(`^/`)
-	tfswalk("/" + re.ReplaceAllString(cfg.Path,""))
+	tfspath := "/" + re.ReplaceAllString(cfg.Path,"")
+
+	if !cfg.Quiet {
+		fmt.Printf("Version %+v\n", version)
+		fmt.Println("Fetch " + tfspath)
+	}
+
+	tfswalk(tfspath)
+
 }

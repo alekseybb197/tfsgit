@@ -17,7 +17,7 @@ Cli utility get parameters from environment, command flags or configuration file
 
 ```
 ❯ dist/tfsgit -h
-Usage of ./tfsgit-darwin-amd64:
+Usage of ./tfsgit:
   -b string
     	branch name (short) (default "master")
   -c string

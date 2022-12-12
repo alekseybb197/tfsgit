@@ -1,5 +1,6 @@
 PROJECT=$(shell basename "$(PWD)")
-GOFLAGS=-ldflags="-w -s" -trimpath
+APPVERS=0.1.0
+GOFLAGS=-ldflags="-w -s" -trimpath -ldflags "-X main.version=${APPVERS}"
 GO111MODULE=on
 
 default: build

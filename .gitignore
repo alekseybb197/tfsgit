@@ -12,3 +12,4 @@ coverage.out
 .envrc
 .DS_Store
 .talismanrc
+/test
