@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	_ "fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -14,6 +13,7 @@ import (
 	"path"
 	"regexp"
 	"time"
+	"net/url"
 
 	confita "github.com/heetch/confita"
 	confitaenv "github.com/heetch/confita/backend/env"
@@ -26,13 +26,14 @@ import (
 var version string
 
 type Config struct {
-	Cred   string `config:"tfscred,short=c,required,description=user name and access token"`
-	Repo   string `config:"tfsrepo,short=r,required,description=repository url"`
-	Branch string `config:"tfsbranch,short=b,optional,description=branch name"`
-	Path   string `config:"tfspath,short=p,required,description=git path"`
-	Depth  int    `config:"tfsdepth,short=d,optional,description=directory depth"`
-	Quiet  bool   `config:"tfsquiet,short=q,optional,description=quiet mode"`
-	Timeout  int  `config:"tfstimeout,short=t,optional,description=timeout secs"`
+	Cred   string  `config:"tfscred,short=c,required,description=user name and access token"`
+	Repo   string  `config:"tfsrepo,short=r,required,description=repository url"`
+	Branch string  `config:"tfsbranch,short=b,optional,description=branch name"`
+	Path   string  `config:"tfspath,short=p,required,description=git path"`
+	Depth  int     `config:"tfsdepth,short=d,optional,description=directory depth"`
+	Quiet  bool    `config:"tfsquiet,short=q,optional,description=quiet mode"`
+	Timeout  int   `config:"tfstimeout,short=t,optional,description=timeout secs"`
+	Verbosity  int `config:"tfsverbosity,short=v,optional,description=output verbosity"`
 }
 
 // default values
@@ -41,6 +42,7 @@ var cfg = Config{
 	Depth:  10,
 	Quiet:	false,
 	Timeout: 5,
+	Verbosity: 0, // it's not implemented yet
 }
 
 var tfsClient = http.Client{
@@ -66,7 +68,7 @@ func tfsrequest(url string) *http.Response {
 }
 
 func tfswalk(tfspath string) { // scan tfspath
-	url := cfg.Repo + "/items?scopePath=" + tfspath + "/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + cfg.Branch
+	url := cfg.Repo + "/items?scopePath=" + tfspath + "/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + url.QueryEscape(cfg.Branch)
 
 	res := tfsrequest(url)
 	if res.Body != nil {
@@ -76,6 +78,12 @@ func tfswalk(tfspath string) { // scan tfspath
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
 		log.Fatalln(readErr)
+	}
+
+    message := gjson.Get(string(body), "message")
+	if message.String() != "" {
+		log.Println("Error -", message.String())
+		return
 	}
 
 	// scan json
