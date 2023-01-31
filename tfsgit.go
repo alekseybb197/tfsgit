@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"time"
 	"net/url"
+	"strings"
 
 	confita "github.com/heetch/confita"
 	confitaenv "github.com/heetch/confita/backend/env"
@@ -21,6 +22,8 @@ import (
 	confitaflags "github.com/heetch/confita/backend/flags"
 
 	"github.com/tidwall/gjson"
+	"github.com/PuerkitoBio/goquery"
+
 )
 
 var version string
@@ -71,22 +74,38 @@ func tfswalk(tfspath string) { // scan tfspath
 	url := cfg.Repo + "/items?scopePath=" + tfspath + "/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + url.QueryEscape(cfg.Branch)
 
 	res := tfsrequest(url)
-	if res.Body != nil {
-		defer res.Body.Close()
+	if res.Body == nil {
+		log.Println("Error -1")
+		os.Exit(1)
 	}
+	defer res.Body.Close()
+
+	// catch unknown code
+	if res.StatusCode != 200 && res.StatusCode != 400 && res.StatusCode != 404 && res.StatusCode != 401{
+        log.Fatalf("failed to fetch data: %s", res.Status)
+    }
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
 		log.Fatalln(readErr)
 	}
 
+	// fetch error from html title
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
+    if err == nil {
+        title := doc.Find("title").Text()
+		if title != "" {
+			log.Fatal(title)	
+		}
+    }
+
+	// fetch error from json field message
     message := gjson.Get(string(body), "message")
 	if message.String() != "" {
-		log.Println("Error -", message.String())
-		return
+		log.Fatal(message.String())
 	}
 
-	// scan json
+	// scan json when all conditions
 	result := gjson.Get(string(body), "value")
 	result.ForEach(func(key, value gjson.Result) bool {
 
