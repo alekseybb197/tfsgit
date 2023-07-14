@@ -9,43 +9,44 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
-	"time"
-	"net/url"
 	"strings"
+	"time"
 
 	confita "github.com/heetch/confita"
 	confitaenv "github.com/heetch/confita/backend/env"
 	confitafile "github.com/heetch/confita/backend/file"
 	confitaflags "github.com/heetch/confita/backend/flags"
 
-	"github.com/tidwall/gjson"
 	"github.com/PuerkitoBio/goquery"
-
+	"github.com/tidwall/gjson"
 )
 
 var version string
 
 type Config struct {
-	Cred   string  `config:"tfscred,short=c,required,description=user name and access token"`
-	Repo   string  `config:"tfsrepo,short=r,required,description=repository url"`
-	Branch string  `config:"tfsbranch,short=b,optional,description=branch name"`
-	Path   string  `config:"tfspath,short=p,required,description=git path"`
-	Depth  int     `config:"tfsdepth,short=d,optional,description=directory depth"`
-	Quiet  bool    `config:"tfsquiet,short=q,optional,description=quiet mode"`
-	Timeout  int   `config:"tfstimeout,short=t,optional,description=timeout secs"`
-	Verbosity  int `config:"tfsverbosity,short=v,optional,description=output verbosity"`
+	Cred      string `config:"tfscred,short=c,required,description=user name and access token"`
+	Repo      string `config:"tfsrepo,short=r,required,description=repository url"`
+	Branch    string `config:"tfsbranch,short=b,optional,description=branch name"`
+	Match     string `config:"tfsmatch,short=m,optional,description=match name"`
+	Path      string `config:"tfspath,short=p,required,description=git path"`
+	Depth     int    `config:"tfsdepth,short=d,optional,description=directory depth"`
+	Quiet     bool   `config:"tfsquiet,short=q,optional,description=quiet mode"`
+	Timeout   int    `config:"tfstimeout,short=t,optional,description=timeout secs"`
+	Verbosity int    `config:"tfsverbosity,short=v,optional,description=output verbosity"`
 }
 
 // default values
 var cfg = Config{
-	Branch: "master",
-	Depth:  10,
-	Quiet:	false,
-	Timeout: 5,
-	Verbosity: 0, // it's not implemented yet
+	Branch:    "master",
+	Match:     "",
+	Depth:     10,
+	Quiet:     false,
+	Timeout:   5,
+	Verbosity: 0,
 }
 
 var tfsClient = http.Client{
@@ -71,7 +72,12 @@ func tfsrequest(url string) *http.Response {
 }
 
 func tfswalk(tfspath string) { // scan tfspath
-	url := cfg.Repo + "/items?scopePath=" + tfspath + "/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + url.QueryEscape(cfg.Branch)
+
+	url := cfg.Repo + "/items?scopePath=" + tfspath +
+		"/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + url.QueryEscape(cfg.Branch)
+	if cfg.Verbosity > 0 {
+		fmt.Printf("\nUrl %+v\n", url)
+	}
 
 	res := tfsrequest(url)
 	if res.Body == nil {
@@ -81,39 +87,58 @@ func tfswalk(tfspath string) { // scan tfspath
 	defer res.Body.Close()
 
 	// catch unknown code
-	if res.StatusCode != 200 && res.StatusCode != 400 && res.StatusCode != 404 && res.StatusCode != 401{
-        log.Fatalf("failed to fetch data: %s", res.Status)
-    }
+	if res.StatusCode != 200 && res.StatusCode != 400 && res.StatusCode != 404 && res.StatusCode != 401 {
+		log.Fatalf("failed to fetch data: %s", res.Status)
+	}
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
 		log.Fatalln(readErr)
 	}
+	if cfg.Verbosity > 1 {
+		fmt.Printf("\nResponse %+v\n", string(body))
+	}
 
 	// fetch error from html title
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
-    if err == nil {
-        title := doc.Find("title").Text()
-		if title != "" {
-			log.Fatal(title)	
-		}
-    }
+	doc, docErr := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
+	if docErr != nil {
+		log.Fatal(docErr)
+	}
+
+	title := doc.Find("title").Text()
+	if title != "" {
+		log.Fatal(title)
+	}
 
 	// fetch error from json field message
-    message := gjson.Get(string(body), "message")
+	message := gjson.Get(string(body), "message")
 	if message.String() != "" {
 		log.Fatal(message.String())
 	}
 
 	// scan json when all conditions
 	result := gjson.Get(string(body), "value")
+	if result.String() == "" {
+		log.Fatal("api response not found")
+	}
+
+	if cfg.Verbosity > 1 {
+		fmt.Printf("\nValue %+v\n", result)
+	}
+
 	result.ForEach(func(key, value gjson.Result) bool {
 
+		if cfg.Verbosity > 1 {
+			fmt.Printf("\nScan %+v\n", value)
+		}
 		etype := gjson.Get(value.String(), "gitObjectType")
 		epath := gjson.Get(value.String(), "path")
 		eurl := gjson.Get(value.String(), "url")
 
 		if etype.String() == "tree" {
+			if cfg.Verbosity > 0 {
+				fmt.Printf("\nFolder %+v\n", epath.String())
+			}
 			if epath.String() == tfspath { // ignore self
 				return true // continue. if it is '.'
 			} else { // subdir found!
@@ -121,7 +146,7 @@ func tfswalk(tfspath string) { // scan tfspath
 
 				if _, err := os.Stat(dirname); errors.Is(err, os.ErrNotExist) {
 					if !cfg.Quiet {
-                        log.Println("make new directory -", dirname)
+						log.Println("make new directory -", dirname)
 					}
 					err := os.Mkdir(dirname, os.ModePerm)
 					if err != nil {
@@ -148,15 +173,30 @@ func tfswalk(tfspath string) { // scan tfspath
 
 		if etype.String() == "blob" { // get file
 			_, filepath := path.Split(epath.String())
+			if cfg.Verbosity > 0 {
+				fmt.Printf("\nFile %+v\n", epath.String())
+			}
+			if cfg.Match != "" { // download matched files only
+				matched, merr := regexp.MatchString(cfg.Match, filepath)
+				if merr != nil {
+					log.Fatal(merr)
+				}
+				if !matched {
+					return true
+				}
+			}
+
 			if !cfg.Quiet {
 				log.Println("download file -", filepath)
 			}
 
 			// need to change schema for download file because lfs
 			pattern_path := regexp.MustCompile(`items//`)
-			url := pattern_path.ReplaceAllString(eurl.String(),"items?path=")
+			url := pattern_path.ReplaceAllString(eurl.String(), "items?path=")
 			pattern_tail := regexp.MustCompile(`\?versionType`)
-			url = pattern_tail.Split(url,-1)[0] + "&versionDescriptor%5BversionOptions%5D=0&versionDescriptor%5BversionType%5D=0&versionDescriptor%5Bversion%5D=" + cfg.Branch
+			url = pattern_tail.Split(url, -1)[0] +
+				"&versionDescriptor%5BversionOptions%5D=0&versionDescriptor%5BversionType%5D=0&versionDescriptor%5Bversion%5D=" +
+				cfg.Branch
 			url = url + "&resolveLfs=true&api-version=5.0&download=true"
 
 			res := tfsrequest(url)
@@ -201,13 +241,21 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	// supress lead slash if exists
-	re, _ := regexp.Compile(`^/`)
-	tfspath := "/" + re.ReplaceAllString(cfg.Path,"")
+	// suppress lead and tail slash if exists
+	leadslash, _ := regexp.Compile(`^/`) // drop lead slash
+	tailslash, _ := regexp.Compile(`/$`) // drop tail slash
+	tfspath := "/" + leadslash.ReplaceAllString(tailslash.ReplaceAllString(cfg.Path, ""), "")
+
+	if cfg.Match != "" { // match file into root level only!
+		cfg.Depth = 0
+	}
 
 	if !cfg.Quiet {
 		fmt.Printf("Version %+v\n", version)
 		fmt.Println("Fetch " + tfspath)
+		if cfg.Match != "" {
+			fmt.Println("Match " + cfg.Match)
+		}
 	}
 
 	tfswalk(tfspath)
