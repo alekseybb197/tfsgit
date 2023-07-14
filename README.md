@@ -26,11 +26,15 @@ Usage of ./tfsgit:
     	directory depth (short) (default 10)
   -p string
     	git path (short)
+  -m string
+    	file match go regexp (short)
   -q	quiet mode (short)
   -r string
     	repository url (short)
   -t int
     	timeout secs (short) (default 5)
+  -v int
+    	verbisity level (default 0) - 1 or 2
   -tfsbranch string
     	branch name (default "master")
   -tfscred string
@@ -39,6 +43,8 @@ Usage of ./tfsgit:
     	directory depth (default 10)
   -tfspath string
     	git path
+  -tfsmatch string
+    	file match go regexp
   -tfsquiet
     	quiet mode
   -tfsrepo string
