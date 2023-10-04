@@ -1,5 +1,5 @@
 PROJECT=$(shell basename "$(PWD)")
-APPVERS=0.1.2
+APPVERS=0.1.3
 GOFLAGS=-ldflags="-w -s" -trimpath -ldflags "-X main.version=${APPVERS}"
 GO111MODULE=on
 

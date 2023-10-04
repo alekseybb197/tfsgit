@@ -73,7 +73,7 @@ func tfsrequest(url string) *http.Response {
 
 func tfswalk(tfspath string) { // scan tfspath
 
-	url := cfg.Repo + "/items?scopePath=" + tfspath +
+	url := cfg.Repo + "/items?scopePath=" + url.QueryEscape(tfspath) +
 		"/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + url.QueryEscape(cfg.Branch)
 	if cfg.Verbosity > 0 {
 		fmt.Printf("\nUrl %+v\n", url)
