@@ -56,6 +56,7 @@ var tfsClient = http.Client{
 // depth level
 var ndepth = 0
 
+// tfsrequest -- call TFS, return response
 func tfsrequest(url string) *http.Response {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -71,7 +72,8 @@ func tfsrequest(url string) *http.Response {
 	return res
 }
 
-func tfswalk(tfspath string) { // scan tfspath
+// tfswalk -- scan repo path
+func tfswalk(tfspath string) bool { // scan tfspath
 
 	url := cfg.Repo + "/items?scopePath=" + url.QueryEscape(tfspath) +
 		"/&recursionLevel=OneLevel&versionDescriptor.versionType=branch&version=" + url.QueryEscape(cfg.Branch)
@@ -126,6 +128,7 @@ func tfswalk(tfspath string) { // scan tfspath
 		fmt.Printf("\nValue %+v\n", result)
 	}
 
+	// scan response json
 	result.ForEach(func(key, value gjson.Result) bool {
 
 		if cfg.Verbosity > 1 {
@@ -139,7 +142,7 @@ func tfswalk(tfspath string) { // scan tfspath
 			if cfg.Verbosity > 0 {
 				fmt.Printf("\nFolder %+v\n", epath.String())
 			}
-			if epath.String() == tfspath { // ignore self
+			if epath.String() == tfspath || cfg.Match != "" { // ignore self or file search mode
 				return true // continue. if it is '.'
 			} else { // subdir found!
 				_, dirname := path.Split(epath.String())
@@ -225,6 +228,8 @@ func tfswalk(tfspath string) { // scan tfspath
 
 		return true // keep iterating
 	})
+
+	return true
 }
 
 func main() {
@@ -246,7 +251,7 @@ func main() {
 	tailslash, _ := regexp.Compile(`/$`) // drop tail slash
 	tfspath := "/" + leadslash.ReplaceAllString(tailslash.ReplaceAllString(cfg.Path, ""), "")
 
-	if cfg.Match != "" { // match file into root level only!
+	if cfg.Match != "" { // search files into root level only!
 		cfg.Depth = 0
 	}
 
@@ -258,6 +263,7 @@ func main() {
 		}
 	}
 
+	// go ahead
 	tfswalk(tfspath)
 
 }
